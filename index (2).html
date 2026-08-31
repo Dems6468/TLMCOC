@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Contest Tier List Builder</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Source+Sans+3:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<header class="topbar">
+  <div class="topbar-title">
+    <span class="topbar-mark"></span>
+    <h1>Contest Tier List Builder</h1>
+  </div>
+  <div class="topbar-stats" id="topbarStats"></div>
+</header>
+
+<main id="app">
+
+  <!-- ================= STEP 1: LANES ================= -->
+  <section class="screen" id="screen-lanes">
+    <div class="screen-head">
+      <span class="step-tag">Step 1 of 3</span>
+      <h2>Set up your tiers</h2>
+      <p class="screen-sub">Add the lanes you'll sort champions into. Order them top to bottom &mdash; that order carries into your results.</p>
+    </div>
+
+    <div class="lane-editor" id="laneEditor"></div>
+
+    <form class="lane-add-form" id="laneAddForm">
+      <input type="text" id="laneNameInput" placeholder="Lane name, e.g. Excellent" maxlength="24" required>
+      <div class="swatch-picker" id="swatchPicker"></div>
+      <button type="submit" class="btn btn-primary">Add lane</button>
+    </form>
+
+    <div class="quick-presets">
+      <span>Quick fill:</span>
+      <button type="button" class="chip" data-preset="tier">S / A / B / C / D</button>
+      <button type="button" class="chip" data-preset="use">Take / Situational / Bench</button>
+    </div>
+
+    <div class="screen-actions">
+      <button class="btn btn-ghost" id="clearLanesBtn" type="button">Clear lanes</button>
+      <button class="btn btn-primary btn-lg" id="toStep2Btn" type="button" disabled>Next: pick your roster</button>
+    </div>
+  </section>
+
+  <!-- ================= STEP 2: ROSTER + MODE ================= -->
+  <section class="screen hidden" id="screen-setup2">
+    <div class="screen-head">
+      <span class="step-tag">Step 2 of 3</span>
+      <h2>Choose your roster</h2>
+      <p class="screen-sub">Sort everyone, or narrow it down to specific classes first.</p>
+    </div>
+
+    <div class="class-filter" id="classFilter"></div>
+
+    <div class="mode-choice">
+      <button type="button" class="mode-card" data-mode="guided">
+        <span class="mode-card-title">Guided, one at a time</span>
+        <span class="mode-card-desc">A champion at a time, front and center. Click the lane it belongs in and move on.</span>
+      </button>
+      <button type="button" class="mode-card" data-mode="freeform">
+        <span class="mode-card-title">Freeform grid</span>
+        <span class="mode-card-desc">See everyone at once and drag each portrait into a lane yourself.</span>
+      </button>
+    </div>
+
+    <div class="screen-actions">
+      <button class="btn btn-ghost" id="back1Btn" type="button">Back</button>
+      <button class="btn btn-primary btn-lg" id="startBtn" type="button" disabled>Start sorting</button>
+    </div>
+  </section>
+
+  <!-- ================= GUIDED MODE ================= -->
+  <section class="screen hidden" id="screen-guided">
+    <div class="guided-progress">
+      <div class="guided-progress-bar"><div id="guidedProgressFill"></div></div>
+      <span id="guidedProgressLabel"></span>
+    </div>
+
+    <div class="guided-stage" id="guidedStage">
+      <div class="guided-card" id="guidedCard">
+        <img id="guidedPortrait" alt="">
+        <div class="guided-card-info">
+          <span class="class-tag" id="guidedClassTag"></span>
+          <h3 id="guidedName"></h3>
+        </div>
+      </div>
+    </div>
+
+    <div class="guided-lane-buttons" id="guidedLaneButtons"></div>
+
+    <div class="screen-actions">
+      <button class="btn btn-ghost" id="guidedBackBtn" type="button">Undo last</button>
+      <button class="btn btn-ghost" id="guidedSkipBtn" type="button">Skip for now</button>
+      <button class="btn btn-primary" id="guidedFinishEarlyBtn" type="button">View board so far</button>
+    </div>
+  </section>
+
+  <!-- ================= FREEFORM MODE ================= -->
+  <section class="screen hidden" id="screen-freeform">
+    <div class="screen-head compact">
+      <h2>Drag champions into a lane</h2>
+      <p class="screen-sub">Unsorted champions are on the left. Drop them onto a lane on the right.</p>
+    </div>
+    <div class="freeform-layout">
+      <div class="freeform-pool" id="freeformPool"></div>
+      <div class="freeform-lanes" id="freeformLanes"></div>
+    </div>
+    <div class="screen-actions">
+      <button class="btn btn-primary" id="freeformDoneBtn" type="button">View board</button>
+    </div>
+  </section>
+
+  <!-- ================= RESULTS BOARD ================= -->
+  <section class="screen hidden" id="screen-board">
+    <div class="screen-head compact">
+      <h2>Your tier list</h2>
+      <p class="screen-sub">Drag portraits between lanes any time. Your board saves automatically in this browser.</p>
+    </div>
+    <div class="board" id="board"></div>
+    <div class="unsorted-tray" id="unsortedTray">
+      <span class="unsorted-tray-label">Unsorted</span>
+      <div class="unsorted-tray-items" id="unsortedTrayItems"></div>
+    </div>
+    <div class="screen-actions">
+      <button class="btn btn-ghost" id="addMoreBtn" type="button">Sort remaining</button>
+      <button class="btn btn-ghost" id="exportBtn" type="button">Export JSON</button>
+      <button class="btn btn-ghost btn-danger" id="resetAllBtn" type="button">Start over</button>
+    </div>
+  </section>
+
+</main>
+
+<script src="data/champions.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>
