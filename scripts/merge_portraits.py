@@ -51,7 +51,7 @@ ROOT = Path(__file__).resolve().parent.parent
 SOURCE_JSON = ROOT / "data" / "champions_source.json"
 BORDERS_DIR = ROOT / "raw" / "borders"
 OUT_DIR = ROOT / "images" / "champions"
-FINAL_JSON = ROOT / "data" / "champions.json"
+FINAL_JSON = ROOT / "data" / "champions_source.json"
 FINAL_JS = ROOT / "data" / "champions.js"
 
 OUT_DIR.mkdir(parents=True, exist_ok=True)
