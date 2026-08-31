@@ -7,7 +7,7 @@
    ============================================================ */
 
 const STORAGE_KEY = 'contestTierState.v1';
-const DATA_URL = 'data/champions.json';
+const DATA_URL = 'data/champions_source.json';
 
 const SWATCHES = ['#D8A945', '#3E8EDE', '#E24C4C', '#4CE28A', '#A24CE2', '#E89A3E', '#5FC7D6', '#D6608F'];
 
