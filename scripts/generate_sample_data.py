@@ -1,176 +1,129 @@
 #!/usr/bin/env python3
 """
-merge_portraits.py
+generate_sample_data.py
 
-Composites each champion's face PNG with its star-rank border (top + bottom
-caps) into one final portrait PNG. Reads YOUR real export format directly:
+Creates FAKE placeholder data in the SAME shape as your real MCOC export
+(nom/classe/photo) so you can try the tool before merging in your real
+faces/ and borders/ folders.
 
-data/champions_source.json
-[
-{
-"nom": "Abomination",
-"Short Name": "Abomination",
-"classe": "Science",
-"photo": "faces/portrait_abominationed8d.png",
-... (buff, immunite, description, photos -- all ignored by this tool,
-kept only if you want them for something else later)
-},
-...
-]
+Produces:
+raw/faces/<id>.png - placeholder "face" portraits
+raw/borders/7star_top.png - placeholder frame (top half)
+raw/borders/7star_bottom.png - placeholder frame (bottom half)
+data/champions_source.json - array in your real export shape
 
-Also accepts the older {"champions": [...]} wrapper with "name"/"class"/
-"face" keys if you still have data in that shape -- both are auto-detected.
-
-Image paths (the "photo" field, e.g. "faces/portrait_xxx.png") are resolved
-relative to raw/, so put your existing faces/ folder inside raw/:
-raw/faces/portrait_xxx.png <- matches "faces/portrait_xxx.png" in the JSON
-
-BORDERS:
-raw/borders/<star>star_top.png
-raw/borders/<star>star_bottom.png
-(falls back to 7star_top/bottom.png if a specific star rank's art is missing;
-no "star" field in your JSON yet, so everyone defaults to 7 for now --
-add a "star" key per champion later if you track multiple ranks)
-
-OUTPUT:
-images/champions/<id>.png <- final composited portrait
-data/champions.json <- normalized list the website reads
-data/champions.js <- same data, inline as window.CHAMPIONS_DATA
-so the site works via plain file:// too
-
-Usage:
-pip install pillow
-python3 scripts/merge_portraits.py
+Run merge_portraits.py afterwards to composite these into final images.
 """
 import json
-import re
+import random
 from pathlib import Path
-from PIL import Image
+from PIL import Image, ImageDraw, ImageFont
 
 ROOT = Path(__file__).resolve().parent.parent
-SOURCE_JSON = ROOT / "data" / "champions_source.json"
+FACES_DIR = ROOT / "raw" / "faces"
 BORDERS_DIR = ROOT / "raw" / "borders"
-OUT_DIR = ROOT / "images" / "champions"
-FINAL_JSON = ROOT / "data" / "champions.json"
-FINAL_JS = ROOT / "data" / "champions.js"
+DATA_DIR = ROOT / "data"
 
-OUT_DIR.mkdir(parents=True, exist_ok=True)
+FACES_DIR.mkdir(parents=True, exist_ok=True)
+BORDERS_DIR.mkdir(parents=True, exist_ok=True)
+DATA_DIR.mkdir(parents=True, exist_ok=True)
 
-_border_cache = {}
+CLASSES = {
+"Cosmic": "#3E8EDE",
+"Tech": "#E8C93E",
+"Mutant": "#E89A3E",
+"Skill": "#E24C4C",
+"Science": "#4CE28A",
+"Mystic": "#A24CE2",
+}
 
+SIZE = 300
 
-def slugify(text: str) -> str:
-text = text.lower().strip()
-text = re.sub(r"[^a-z0-9]+", "_", text)
-return text.strip("_") or "champion"
-
-
-def normalize(raw_list):
-"""Accepts your real export (nom/classe/photo/...) and normalizes each
-entry to {id, name, class, star, face}."""
-out = []
-for champ in raw_list:
-name = champ.get("nom") or champ.get("name") or champ.get("Short Name")
-champ_class = champ.get("classe") or champ.get("class")
-photo = champ.get("photo") or champ.get("face")
-star = champ.get("star", 7)
-champ_id = champ.get("id") or slugify(champ.get("Short Name") or name or "")
-
-if not name or not photo:
-print(f"SKIP entry (missing name or photo field): {champ}")
-continue
-
-out.append({
-"id": champ_id,
-"name": name,
-"class": champ_class or "Unknown",
-"star": star,
-"face": f"raw/{photo}",
-})
-return out
+FIRST = ["Nova", "Iron", "Shadow", "Void", "Storm", "Blaze", "Crimson", "Ghost",
+"Titan", "Rogue", "Astra", "Onyx", "Phantom", "Solar", "Frost", "Viper"]
+SECOND = ["Warden", "Reaver", "Sentinel", "Wraith", "Fury", "Vanguard", "Strider",
+"Marauder", "Paladin", "Specter", "Rider", "Guard", "Knight", "Runner"]
 
 
-def get_border(star: int, part: str):
-"""part is 'top' or 'bottom'. Falls back to 7star if the specific
-star-rank border doesn't exist yet."""
-key = (star, part)
-if key in _border_cache:
-return _border_cache[key]
-
-candidates = [
-BORDERS_DIR / f"{star}star_{part}.png",
-BORDERS_DIR / f"7star_{part}.png",
-]
-for c in candidates:
-if c.exists():
-img = Image.open(c).convert("RGBA")
-_border_cache[key] = img
-return img
-
-_border_cache[key] = None
-return None
-
-
-def merge_one(champ: dict) -> str:
-face_path = ROOT / champ["face"]
-face = Image.open(face_path).convert("RGBA")
-
-top = get_border(champ.get("star", 7), "top")
-bottom = get_border(champ.get("star", 7), "bottom")
-
-canvas = Image.new("RGBA", face.size, (0, 0, 0, 0))
-canvas.alpha_composite(face)
-if top is not None:
-top_resized = top.resize(face.size) if top.size != face.size else top
-canvas.alpha_composite(top_resized)
-if bottom is not None:
-bottom_resized = bottom.resize(face.size) if bottom.size != face.size else bottom
-canvas.alpha_composite(bottom_resized)
-
-out_path = OUT_DIR / f"{champ['id']}.png"
-canvas.save(out_path)
-return f"images/champions/{champ['id']}.png"
-
-
-def main():
-if not SOURCE_JSON.exists():
-raise SystemExit(
-f"Missing {SOURCE_JSON}. Run scripts/generate_sample_data.py for a "
-f"demo roster, or drop your real export there (see this file's "
-f"docstring for the expected shape)."
+def make_face(path: Path, label: str, color: str):
+img = Image.new("RGB", (SIZE, SIZE), color)
+draw = ImageDraw.Draw(img)
+for i in range(0, SIZE, 6):
+draw.line([(i, 0), (0, i)], fill="#00000022", width=2)
+initials = "".join([p[0] for p in label.split()])[:2].upper()
+try:
+font = ImageFont.truetype(
+"/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 110
 )
+except Exception:
+font = ImageFont.load_default()
+bbox = draw.textbbox((0, 0), initials, font=font)
+w, h = bbox[2] - bbox[0], bbox[3] - bbox[1]
+draw.text(
+((SIZE - w) / 2 - bbox[0], (SIZE - h) / 2 - bbox[1]),
+initials, fill="white", font=font
+)
+img.save(path)
 
-raw = json.loads(SOURCE_JSON.read_text())
-raw_list = raw["champions"] if isinstance(raw, dict) and "champions" in raw else raw
-source = normalize(raw_list)
 
-final_list = []
-for champ in source:
-face_path = ROOT / champ["face"]
-if not face_path.exists():
-print(f"SKIP {champ['id']} ({champ['name']}): face file not found at {face_path}")
-continue
-image_path = merge_one(champ)
-final_list.append({
-"id": champ["id"],
-"name": champ["name"],
-"class": champ["class"],
-"star": champ.get("star", 7),
-"image": image_path,
+def make_border_pieces():
+gold = (255, 208, 92, 255)
+gold_dark = (168, 122, 30, 255)
+
+top = Image.new("RGBA", (SIZE, SIZE), (0, 0, 0, 0))
+d = ImageDraw.Draw(top)
+d.rectangle([0, 0, SIZE - 1, 14], fill=gold)
+d.rectangle([0, 0, 14, SIZE // 3], fill=gold)
+d.rectangle([SIZE - 15, 0, SIZE - 1, SIZE // 3], fill=gold)
+d.rectangle([0, 12, SIZE - 1, 14], fill=gold_dark)
+for x, y in [(0, 0), (SIZE - 24, 0)]:
+d.ellipse([x, y, x + 24, y + 24], fill=gold_dark)
+top.save(BORDERS_DIR / "7star_top.png")
+
+bottom = Image.new("RGBA", (SIZE, SIZE), (0, 0, 0, 0))
+d = ImageDraw.Draw(bottom)
+d.rectangle([0, SIZE - 15, SIZE - 1, SIZE - 1], fill=gold)
+d.rectangle([0, 2 * SIZE // 3, 14, SIZE - 1], fill=gold)
+d.rectangle([SIZE - 15, 2 * SIZE // 3, SIZE - 1, SIZE - 1], fill=gold)
+d.rectangle([0, SIZE - 15, SIZE - 1, SIZE - 13], fill=gold_dark)
+for x, y in [(0, SIZE - 24), (SIZE - 24, SIZE - 24)]:
+d.ellipse([x, y, x + 24, y + 24], fill=gold_dark)
+bottom.save(BORDERS_DIR / "7star_bottom.png")
+
+
+def main(n=18, seed=42):
+random.seed(seed)
+make_border_pieces()
+
+used_names = set()
+champions = []
+class_names = list(CLASSES.keys())
+
+for i in range(n):
+while True:
+name = f"{random.choice(FIRST)} {random.choice(SECOND)}"
+if name not in used_names:
+used_names.add(name)
+break
+champ_class = class_names[i % len(class_names)]
+color = CLASSES[champ_class]
+champ_id = f"champ_{i+1:03d}"
+face_file = f"{champ_id}.png"
+make_face(FACES_DIR / face_file, name, color)
+
+# Same shape as the real export: nom / classe / photo (relative to raw/)
+champions.append({
+"nom": name,
+"Short Name": name,
+"classe": champ_class,
+"photo": f"faces/{face_file}",
+"star": random.choice([6, 6, 7, 7, 7]),
 })
 
-payload = {"champions": final_list}
-FINAL_JSON.write_text(json.dumps(payload, indent=2))
-
-js_content = (
-"// Auto-generated by scripts/merge_portraits.py -- do not edit by hand.\n"
-"window.CHAMPIONS_DATA = " + json.dumps(payload, indent=2) + ";\n"
-)
-FINAL_JS.write_text(js_content)
-
-print(f"Merged {len(final_list)} portraits -> {OUT_DIR}/")
-print(f"Wrote final roster -> {FINAL_JSON}")
-print(f"Wrote inline data -> {FINAL_JS}")
+out = DATA_DIR / "champions_source.json"
+out.write_text(json.dumps(champions, indent=2))
+print(f"Generated {n} placeholder champions -> {out}")
+print("Next: run scripts/merge_portraits.py to composite final images.")
 
 
 if __name__ == "__main__":
