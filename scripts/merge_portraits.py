@@ -2,8 +2,8 @@
 """
 merge_portraits.py
 
-Composites each champion's face PNG with its star-rank border (top + bottom
-caps) into one final portrait PNG. Reads YOUR real export format directly:
+Composites each champion's face PNG with its star-rank border into one
+final portrait PNG. Reads YOUR real export format directly:
 
   data/champions_source.json
     [
@@ -26,11 +26,26 @@ relative to the repo root, so your existing faces/ folder sits right at the
 top level, unchanged:
   faces/portrait_xxx.png   <-  matches "faces/portrait_xxx.png" in the JSON
 
-BORDERS:
-  borders/<star>star_frame.png   <- ONE file, transparent hole in the middle
-  (falls back to 7star_frame.png if a specific star rank's art is missing;
-   older borders/<star>star_top.png + <star>star_bottom.png two-file setup
-   still works as a fallback if no frame.png is found)
+BORDERS -- two ways, tried in this order:
+
+  1) Proper depth (recommended, gives the "popping out of the frame" look):
+     borders/<star>star_back.png   <- behind the face (top bar + side columns)
+     borders/<star>star_front.png  <- in front of the face (bottom shelf/base)
+     Export both at the EXACT same pixel size as your face images -- no
+     auto-crop/resize is applied to these, so mismatched sizes will distort.
+
+  2) Legacy single overlay (flat, no pop-out effect):
+     borders/<star>star_frame.png  <- one file, transparent hole in the middle
+     (auto-cropped to its own artwork bounding box, then stretched to fit
+     the face canvas)
+
+  Also supports the older two-file borders/<star>star_top.png +
+  <star>star_bottom.png (both drawn in FRONT of the face) as a last resort.
+
+  All of the above fall back to the 7-star version if a specific star
+  rank's art is missing. No "star" field in your JSON yet, so everyone
+  defaults to 7 for now -- add a "star" key per champion later if you
+  track multiple ranks.
 
 OUTPUT:
   images/champions/<id>.png    <- final composited portrait
@@ -90,11 +105,40 @@ def normalize(raw_list):
     return out
 
 
+def _load_and_crop(path: Path):
+    img = Image.open(path).convert("RGBA")
+    bbox = img.getbbox()
+    if bbox is not None:
+        img = img.crop(bbox)
+    return img
+
+
+def get_layer(star: int, kind: str):
+    """kind is 'back' (behind the face -- top bar + side columns) or
+    'front' (in front of the face -- the bottom shelf/base). Falls back to
+    7star if the specific star rank's art is missing. Loaded as-is (no
+    auto-crop) -- export these at the exact same canvas size as your face
+    images so nothing gets stretched out of position."""
+    key = (kind, star)
+    if key in _border_cache:
+        return _border_cache[key]
+    candidates = [
+        BORDERS_DIR / f"{star}star_{kind}.png",
+        BORDERS_DIR / f"7star_{kind}.png",
+    ]
+    for c in candidates:
+        if c.exists():
+            img = Image.open(c).convert("RGBA")
+            _border_cache[key] = img
+            return img
+    _border_cache[key] = None
+    return None
+
+
 def get_frame(star: int):
-    """Single full-canvas overlay with a transparent hole for the face.
-    Falls back to 7star if the specific star rank's art is missing.
-    Auto-crops any transparent padding around the artwork first, so the
-    frame touches all 4 edges once resized onto the face canvas."""
+    """Legacy single full-canvas overlay (frame sits entirely in FRONT of
+    the face, no pop-out effect). Used only if back/front pieces aren't
+    found -- see get_layer() for the preferred two-piece setup."""
     key = ("frame", star)
     if key in _border_cache:
         return _border_cache[key]
@@ -104,10 +148,7 @@ def get_frame(star: int):
     ]
     for c in candidates:
         if c.exists():
-            img = Image.open(c).convert("RGBA")
-            bbox = img.getbbox()  # bounding box of non-fully-transparent pixels
-            if bbox is not None:
-                img = img.crop(bbox)
+            img = _load_and_crop(c)
             _border_cache[key] = img
             return img
     _border_cache[key] = None
@@ -139,25 +180,44 @@ def merge_one(champ: dict) -> str:
     face_path = ROOT / champ["face"]
     face = Image.open(face_path).convert("RGBA")
     star = champ.get("star", 7)
+    size = face.size
 
-    canvas = Image.new("RGBA", face.size, (0, 0, 0, 0))
-    canvas.alpha_composite(face)
+    canvas = Image.new("RGBA", size, (0, 0, 0, 0))
 
-    frame = get_frame(star)
-    if frame is not None:
-        # Preferred path: one overlay with a transparent hole for the face.
-        frame_resized = frame.resize(face.size) if frame.size != face.size else frame
-        canvas.alpha_composite(frame_resized)
+    back = get_layer(star, "back")
+    front = get_layer(star, "front")
+
+    if back is not None or front is not None:
+        # Preferred: proper depth. Back frame elements first (behind the
+        # face), then the face, then the front shelf/base on top (in
+        # front of the face) -- this is what makes the character look
+        # like it's popping out of the top of the frame while still
+        # being cropped by the bottom shelf.
+        if back is not None:
+            back_resized = back.resize(size) if back.size != size else back
+            canvas.alpha_composite(back_resized)
+        canvas.alpha_composite(face)
+        if front is not None:
+            front_resized = front.resize(size) if front.size != size else front
+            canvas.alpha_composite(front_resized)
     else:
-        # Fallback: separate top/bottom pieces (older two-file setup).
-        top = get_border(star, "top")
-        bottom = get_border(star, "bottom")
-        if top is not None:
-            top_resized = top.resize(face.size) if top.size != face.size else top
-            canvas.alpha_composite(top_resized)
-        if bottom is not None:
-            bottom_resized = bottom.resize(face.size) if bottom.size != face.size else bottom
-            canvas.alpha_composite(bottom_resized)
+        canvas.alpha_composite(face)
+        frame = get_frame(star)
+        if frame is not None:
+            # Legacy: single overlay entirely in front of the face (flat
+            # look, no pop-out effect).
+            frame_resized = frame.resize(size) if frame.size != size else frame
+            canvas.alpha_composite(frame_resized)
+        else:
+            # Older two-file top/bottom setup, also entirely in front.
+            top = get_border(star, "top")
+            bottom = get_border(star, "bottom")
+            if top is not None:
+                top_resized = top.resize(size) if top.size != size else top
+                canvas.alpha_composite(top_resized)
+            if bottom is not None:
+                bottom_resized = bottom.resize(size) if bottom.size != size else bottom
+                canvas.alpha_composite(bottom_resized)
 
     out_path = OUT_DIR / f"{champ['id']}.png"
     canvas.save(out_path)
