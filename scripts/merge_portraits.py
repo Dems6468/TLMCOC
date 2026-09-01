@@ -27,11 +27,10 @@ top level, unchanged:
   faces/portrait_xxx.png   <-  matches "faces/portrait_xxx.png" in the JSON
 
 BORDERS:
-  borders/<star>star_top.png
-  borders/<star>star_bottom.png
-  (falls back to 7star_top/bottom.png if a specific star rank's art is missing;
-   no "star" field in your JSON yet, so everyone defaults to 7 for now --
-   add a "star" key per champion later if you track multiple ranks)
+  borders/<star>star_frame.png   <- ONE file, transparent hole in the middle
+  (falls back to 7star_frame.png if a specific star rank's art is missing;
+   older borders/<star>star_top.png + <star>star_bottom.png two-file setup
+   still works as a fallback if no frame.png is found)
 
 OUTPUT:
   images/champions/<id>.png    <- final composited portrait
@@ -91,6 +90,30 @@ def normalize(raw_list):
     return out
 
 
+def get_frame(star: int):
+    """Single full-canvas overlay with a transparent hole for the face.
+    Falls back to 7star if the specific star rank's art is missing.
+    Auto-crops any transparent padding around the artwork first, so the
+    frame touches all 4 edges once resized onto the face canvas."""
+    key = ("frame", star)
+    if key in _border_cache:
+        return _border_cache[key]
+    candidates = [
+        BORDERS_DIR / f"{star}star_frame.png",
+        BORDERS_DIR / "7star_frame.png",
+    ]
+    for c in candidates:
+        if c.exists():
+            img = Image.open(c).convert("RGBA")
+            bbox = img.getbbox()  # bounding box of non-fully-transparent pixels
+            if bbox is not None:
+                img = img.crop(bbox)
+            _border_cache[key] = img
+            return img
+    _border_cache[key] = None
+    return None
+
+
 def get_border(star: int, part: str):
     """part is 'top' or 'bottom'. Falls back to 7star if the specific
     star-rank border doesn't exist yet."""
@@ -115,18 +138,26 @@ def get_border(star: int, part: str):
 def merge_one(champ: dict) -> str:
     face_path = ROOT / champ["face"]
     face = Image.open(face_path).convert("RGBA")
-
-    top = get_border(champ.get("star", 7), "top")
-    bottom = get_border(champ.get("star", 7), "bottom")
+    star = champ.get("star", 7)
 
     canvas = Image.new("RGBA", face.size, (0, 0, 0, 0))
     canvas.alpha_composite(face)
-    if top is not None:
-        top_resized = top.resize(face.size) if top.size != face.size else top
-        canvas.alpha_composite(top_resized)
-    if bottom is not None:
-        bottom_resized = bottom.resize(face.size) if bottom.size != face.size else bottom
-        canvas.alpha_composite(bottom_resized)
+
+    frame = get_frame(star)
+    if frame is not None:
+        # Preferred path: one overlay with a transparent hole for the face.
+        frame_resized = frame.resize(face.size) if frame.size != face.size else frame
+        canvas.alpha_composite(frame_resized)
+    else:
+        # Fallback: separate top/bottom pieces (older two-file setup).
+        top = get_border(star, "top")
+        bottom = get_border(star, "bottom")
+        if top is not None:
+            top_resized = top.resize(face.size) if top.size != face.size else top
+            canvas.alpha_composite(top_resized)
+        if bottom is not None:
+            bottom_resized = bottom.resize(face.size) if bottom.size != face.size else bottom
+            canvas.alpha_composite(bottom_resized)
 
     out_path = OUT_DIR / f"{champ['id']}.png"
     canvas.save(out_path)
