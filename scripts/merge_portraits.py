@@ -81,19 +81,25 @@ def slugify(text: str) -> str:
 
 
 def normalize(raw_list):
-    """Accepts your real export (nom/classe/photo/...) and normalizes each
-    entry to {id, name, class, star, face}."""
     out = []
+    seen_ids = set()
     for champ in raw_list:
         name = champ.get("nom") or champ.get("name") or champ.get("Short Name")
         champ_class = champ.get("classe") or champ.get("class")
         photo = champ.get("photo") or champ.get("face")
         star = champ.get("star", 7)
-        champ_id = champ.get("id") or slugify(champ.get("Short Name") or name or "")
 
         if not name or not photo:
             print(f"SKIP entry (missing name or photo field): {champ}")
             continue
+
+        base_id = champ.get("id") or slugify(name)
+        champ_id = base_id
+        n = 2
+        while champ_id in seen_ids:
+            champ_id = f"{base_id}_{n}"
+            n += 1
+        seen_ids.add(champ_id)
 
         out.append({
             "id": champ_id,
