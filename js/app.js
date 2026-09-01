@@ -473,7 +473,10 @@ function renderBoard() {
   // unsorted tray: anyone in the full roster not yet assigned
   const trayItems = document.getElementById('unsortedTrayItems');
   trayItems.innerHTML = '';
-  const unsorted = CHAMPIONS.filter(c => !(c.id in state.assignments));
+  const unsorted = CHAMPIONS.filter(c =>
+  !(c.id in state.assignments) &&
+  (state.selectedClasses === null || state.selectedClasses.includes(c.class))
+);
   unsorted.forEach(champ => trayItems.appendChild(makePortraitEl(champ)));
 
   const tray = document.getElementById('unsortedTray');
